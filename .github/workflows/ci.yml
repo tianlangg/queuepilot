@@ -1,0 +1,49 @@
+name: checks
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  foundation:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17.11-bookworm
+        env:
+          POSTGRES_USER: queuepilot_test
+          POSTGRES_DB: queuepilot_test
+          POSTGRES_PASSWORD: ci-test-only
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U queuepilot_test -d queuepilot_test"
+          --health-interval 2s --health-timeout 3s --health-retries 30
+      redis:
+        image: redis:7.4.11-bookworm
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 2s --health-timeout 3s --health-retries 30
+    env:
+      QUEUEPILOT_TEST_DATABASE_URL: postgresql+psycopg://queuepilot_test:ci-test-only@127.0.0.1:5432/queuepilot_test
+      QUEUEPILOT_TEST_REDIS_URL: redis://127.0.0.1:6379/0
+      QUEUEPILOT_ALLOW_TEST_DATABASE: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.13.1"
+          enable-cache: true
+      - run: uv python install 3.13
+      - run: sh scripts/check.sh --require-integration
+      - run: docker compose --env-file /dev/null config --quiet
+        env:
+          POSTGRES_PASSWORD: ci-test-only
+      - run: docker compose --env-file /dev/null up --build --wait api
+        env:
+          POSTGRES_PASSWORD: ci-test-only
+      - run: |
+          curl --fail http://127.0.0.1:8000/
+          curl --fail http://127.0.0.1:8000/health/ready
+      - if: always()
+        run: docker compose --env-file /dev/null down
+        env:
+          POSTGRES_PASSWORD: ci-test-only

@@ -1,0 +1,72 @@
+name: queuepilot
+x-app: &app
+  build: .
+  environment: &app-environment
+    QUEUEPILOT_ENVIRONMENT: development
+    QUEUEPILOT_DATABASE_URL: postgresql+psycopg://queuepilot:${POSTGRES_PASSWORD:?Run python3 scripts/init_env.py first}@postgres:5432/queuepilot
+    QUEUEPILOT_REDIS_URL: redis://redis:6379/0
+services:
+  postgres:
+    image: postgres:17.11-bookworm
+    environment:
+      POSTGRES_USER: queuepilot
+      POSTGRES_DB: queuepilot
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run python3 scripts/init_env.py first}
+    ports: ["127.0.0.1:55432:5432"]
+    volumes: ["postgres-data:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U queuepilot -d queuepilot"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+  redis:
+    image: redis:7.4.11-bookworm
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports: ["127.0.0.1:56379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+  migrate:
+    <<: *app
+    command: ["alembic", "upgrade", "head"]
+    depends_on:
+      postgres: {condition: service_healthy}
+  api:
+    <<: *app
+    ports: ["127.0.0.1:8000:8000"]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      redis: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=5)"]
+      interval: 5s
+      timeout: 6s
+      retries: 12
+  postgres-test:
+    profiles: ["test"]
+    image: postgres:17.11-bookworm
+    environment:
+      POSTGRES_USER: queuepilot_test
+      POSTGRES_DB: queuepilot_test
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run python3 scripts/init_env.py first}
+    ports: ["127.0.0.1:55433:5432"]
+    tmpfs: ["/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U queuepilot_test -d queuepilot_test"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+  redis-test:
+    profiles: ["test"]
+    image: redis:7.4.11-bookworm
+    ports: ["127.0.0.1:56380:6379"]
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+volumes:
+  postgres-data:

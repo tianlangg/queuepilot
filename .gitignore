@@ -4,3 +4,12 @@ __pycache__/
 .pytest_cache/
 node_modules/
 .DS_Store
+.env.*
+!.env.example
+.ruff_cache/
+.mypy_cache/
+*.egg-info/
+build/
+dist/
+*.pem
+*.key
