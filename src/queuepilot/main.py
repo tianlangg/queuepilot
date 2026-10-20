@@ -4,11 +4,14 @@ import logging
 from collections.abc import AsyncIterator
 from contextlib import AsyncExitStack, asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from queuepilot.api.health import router as health_router
+from queuepilot.auth.routes import router as auth_router
 from queuepilot.core.config import Settings
 from queuepilot.core.resources import Resources, create_redis
 from queuepilot.db.session import create_engine
@@ -47,7 +50,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 logger.info("Stopped %s", app.title)
 
     app = FastAPI(title=config.app_name, lifespan=lifespan)
+    app.state.settings = config
+
+    @app.exception_handler(RequestValidationError)
+    async def invalid_request(
+        _request: Request, _exc: RequestValidationError
+    ) -> JSONResponse:
+        return JSONResponse(status_code=422, content={"detail": "Invalid request"})
+
     app.include_router(health_router)
+    app.include_router(auth_router)
 
     @app.get("/", response_model=RootResponse)
     async def root() -> RootResponse:

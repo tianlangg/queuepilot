@@ -17,6 +17,9 @@ def isolated_settings(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         "postgresql+psycopg://unused@127.0.0.1:1/queuepilot_test",
     )
     monkeypatch.setenv("QUEUEPILOT_REDIS_URL", "redis://127.0.0.1:1/0")
+    monkeypatch.setenv(
+        "QUEUEPILOT_TOKEN_SECRET", "test-only-token-secret-at-least-32-bytes"
+    )
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:

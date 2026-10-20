@@ -27,6 +27,11 @@ class Settings(BaseSettings):
     )
     database_url: SecretStr
     redis_url: SecretStr
+    token_secret: Annotated[SecretStr, Field(min_length=32)]
+    token_issuer: Annotated[str, StringConstraints(min_length=1)] = "queuepilot"
+    token_audience: Annotated[str, StringConstraints(min_length=1)] = "queuepilot-api"
+    access_token_minutes: Annotated[int, Field(ge=1, le=60)] = 15
+    refresh_token_days: Annotated[int, Field(ge=1, le=90)] = 30
     probe_timeout_seconds: Annotated[float, Field(gt=0, le=10, allow_inf_nan=False)] = 2
 
     @field_validator("database_url")

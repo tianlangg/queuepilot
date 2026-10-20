@@ -74,6 +74,7 @@ def empty_database(service_urls: tuple[str, str]) -> Iterator[Settings]:
                     .render_as_string(hide_password=False)
                 ),
                 redis_url=SecretStr(redis_url),
+                token_secret=SecretStr("test-only-token-secret-at-least-32-bytes"),
                 probe_timeout_seconds=0.5,
             )
         finally:
@@ -92,6 +93,7 @@ def migrate(settings: Settings, target: str = "head") -> None:
         QUEUEPILOT_ENVIRONMENT="test",
         QUEUEPILOT_DATABASE_URL=settings.database_url.get_secret_value(),
         QUEUEPILOT_REDIS_URL=settings.redis_url.get_secret_value(),
+        QUEUEPILOT_TOKEN_SECRET=settings.token_secret.get_secret_value(),
     )
     subprocess.run(
         [

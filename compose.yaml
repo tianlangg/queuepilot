@@ -5,6 +5,7 @@ x-app: &app
     QUEUEPILOT_ENVIRONMENT: development
     QUEUEPILOT_DATABASE_URL: postgresql+psycopg://queuepilot:${POSTGRES_PASSWORD:?Run python3 scripts/init_env.py first}@postgres:5432/queuepilot
     QUEUEPILOT_REDIS_URL: redis://redis:6379/0
+    QUEUEPILOT_TOKEN_SECRET: ${QUEUEPILOT_TOKEN_SECRET:?Run python3 scripts/init_env.py first}
 services:
   postgres:
     image: postgres:17.11-bookworm
