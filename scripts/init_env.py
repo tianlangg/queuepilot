@@ -32,7 +32,13 @@ def add_missing(path: Path, values: dict[str, str]) -> None:
 
 def main() -> None:
     compose_path = ROOT / ".env.compose"
-    add_missing(compose_path, {"POSTGRES_PASSWORD": secrets.token_hex(24)})
+    add_missing(
+        compose_path,
+        {
+            "POSTGRES_PASSWORD": secrets.token_hex(24),
+            "QUEUEPILOT_TOKEN_SECRET": secrets.token_urlsafe(48),
+        },
+    )
     password = quote(read_values(compose_path)["POSTGRES_PASSWORD"], safe="")
     add_missing(
         ROOT / ".env",
@@ -42,6 +48,9 @@ def main() -> None:
                 f"postgresql+psycopg://queuepilot:{password}@127.0.0.1:55432/queuepilot"
             ),
             "QUEUEPILOT_REDIS_URL": "redis://127.0.0.1:56379/0",
+            "QUEUEPILOT_TOKEN_SECRET": read_values(compose_path)[
+                "QUEUEPILOT_TOKEN_SECRET"
+            ],
         },
     )
     add_missing(

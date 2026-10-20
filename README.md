@@ -1,9 +1,9 @@
 # QueuePilot
 
-An API-first helpdesk under construction. Milestone 1 supplies packaging, typed
-configuration, async PostgreSQL sessions, Alembic migrations, Redis clients,
-health probes, local containers, and CI checks. Authentication, tickets, workers,
-and WebSockets are later milestones. See [PLAN.md](PLAN.md).
+An API-first helpdesk under construction. Milestones 1 and 2 supply the service
+foundation, users, bearer authentication, rotating refresh sessions, and admin
+managed accounts. Tickets, workers, and WebSockets are later milestones. See
+[PLAN.md](PLAN.md).
 
 ## Prerequisites and one-command startup
 
@@ -44,6 +44,20 @@ docker compose --env-file .env.compose down
 to localhost only. These containers are a development setup, not production
 infrastructure; Redis has no local authentication. Never expose it publicly.
 
+After startup, create the first administrator explicitly. The password is read
+from a hidden terminal prompt and must have at least 12 characters:
+
+```sh
+uv run --locked python -m queuepilot.auth.bootstrap --email admin@example.com
+```
+
+Run the command again with the same email to confirm the account already exists.
+It rejects a different email once an administrator exists and never promotes an
+existing requester or agent. In Docker, use
+`docker compose --env-file .env.compose run --rm api python -m queuepilot.auth.bootstrap --email admin@example.com`.
+The command requires a migrated database and application settings. Use a unique
+password from a password manager; no default credentials exist.
+
 ## Run Python on the host
 
 ```sh
@@ -80,6 +94,11 @@ password. Never commit local environment files.
 | `QUEUEPILOT_REDIS_URL` | Yes | `redis://host:port/0` or `rediss://...` |
 | `QUEUEPILOT_APP_NAME` | No | Nonblank display name; default `QueuePilot` |
 | `QUEUEPILOT_PROBE_TIMEOUT_SECONDS` | No | Per-dependency probe deadline, >0 and <=10; default 2 |
+| `QUEUEPILOT_TOKEN_SECRET` | Yes | Random signing key, at least 32 characters; keep stable across API replicas and restarts |
+| `QUEUEPILOT_TOKEN_ISSUER` | No | Access token issuer; default `queuepilot` |
+| `QUEUEPILOT_TOKEN_AUDIENCE` | No | Access token audience; default `queuepilot-api` |
+| `QUEUEPILOT_ACCESS_TOKEN_MINUTES` | No | Access token lifetime, 1–60 minutes; default 15 |
+| `QUEUEPILOT_REFRESH_TOKEN_DAYS` | No | Refresh session lifetime, 1–90 days; default 30 |
 
 The app reads an optional `.env` in the **current working directory**; environment
 variables override it. Unknown `.env` keys are rejected. `.env.compose` belongs
@@ -112,7 +131,38 @@ closes Redis and disposes the database pool, including on exceptional exits.
 Sessions are per request/task; `get_session` closes and rolls back uncommitted
 work. Services must own explicit transactions; helpers never silently commit.
 Database connections use UTC, a 5-second statement timeout, and a 3-second lock
-timeout. Pools are bounded. No domain tables or transaction retry policy exist yet.
+timeout. Pools are bounded. No ticket transaction retry policy exists yet.
+
+## Authentication and accounts
+
+The API uses JSON bearer tokens in the `Authorization` header; it does not set
+credential cookies, so cookie CSRF handling does not apply. Store refresh tokens
+in a protected client secret store, never in a URL or log. Access tokens expire
+after 15 minutes by default and are checked against the active database session
+on every protected request. Rotation invalidates the prior access token; reuse
+of an old refresh token revokes its whole family. Logout revokes the current
+family. Disabling a user revokes all their refresh sessions and denies login.
+Signing key rotation invalidates existing access tokens; refresh sessions remain
+valid and can issue tokens with the new key. Revoke sessions if the key was
+compromised.
+
+```sh
+curl -X POST http://127.0.0.1:8000/api/v1/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"admin@example.com","password":"YOUR_PASSWORD"}'
+# POST /api/v1/auth/refresh {"refresh_token":"..."}
+# POST /api/v1/auth/logout with Authorization: Bearer <access_token>
+# GET  /api/v1/auth/me with Authorization: Bearer <access_token>
+```
+
+An administrator can `POST /api/v1/users` with `email`, `password`, and role
+`requester` or `agent`; `GET /api/v1/users/{id}`; and
+`PATCH /api/v1/users/{id}/status` with `{"disabled":true}`. Users can read their
+own record. All user routes require authentication. Public registration, API
+administrator creation, and role mutation are unavailable. Duplicate emails
+return 409, denied actions 403, invalid credentials 401, and invalid input 422.
+Authentication responses carry `Cache-Control: no-store`. See the
+[permission matrix](docs/0004-authentication.md) for complete rules.
 
 ## Migrations
 
@@ -122,8 +172,8 @@ uv run --locked alembic current
 uv run --locked alembic check
 ```
 
-The reviewed initial revision establishes an empty baseline and Alembic's version
-table. User/ticket tables will be added with their features. Migrations are a
+The reviewed revisions establish the foundation baseline and then `users` and
+`refresh_sessions`. Ticket tables will be added with their features. Migrations are a
 separate operation, never an API startup side effect; Compose gates API startup on
 the migration job. Readiness requires the expected revision from
 `src/queuepilot/db/base.py`; update that constant when adding a revision.

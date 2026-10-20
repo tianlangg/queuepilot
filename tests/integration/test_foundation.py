@@ -39,7 +39,11 @@ def test_migrate_empty_database_and_repeat_upgrade(empty_database: Settings) -> 
         tables = connection.execute(
             "SELECT tablename FROM pg_tables WHERE schemaname = 'public'"
         ).fetchall()
-        assert tables == [("alembic_version",)]
+        assert {name for (name,) in tables} == {
+            "alembic_version",
+            "users",
+            "refresh_sessions",
+        }
 
 
 def test_unmigrated_database_is_not_ready(empty_database: Settings) -> None:
@@ -146,6 +150,7 @@ def test_real_http_process(migrated_database: Settings, tmp_path: Path) -> None:
         QUEUEPILOT_ENVIRONMENT="test",
         QUEUEPILOT_DATABASE_URL=migrated_database.database_url.get_secret_value(),
         QUEUEPILOT_REDIS_URL=migrated_database.redis_url.get_secret_value(),
+        QUEUEPILOT_TOKEN_SECRET=migrated_database.token_secret.get_secret_value(),
     )
     with socket.socket() as listener, (tmp_path / "server.log").open("w+") as log:
         listener.bind(("127.0.0.1", 0))

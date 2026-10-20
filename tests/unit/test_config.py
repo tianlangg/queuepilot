@@ -91,3 +91,16 @@ def test_credentials_are_not_in_settings_repr(monkeypatch: pytest.MonkeyPatch) -
         "QUEUEPILOT_DATABASE_URL", "postgresql+psycopg://user:private@localhost/db"
     )
     assert "private" not in repr(Settings())
+
+
+def test_token_secret_required_and_redacted(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("QUEUEPILOT_ENVIRONMENT", "test")
+    monkeypatch.delenv("QUEUEPILOT_TOKEN_SECRET")
+    with pytest.raises(ValidationError, match="token_secret"):
+        Settings()
+    monkeypatch.setenv("QUEUEPILOT_TOKEN_SECRET", "short")
+    with pytest.raises(ValidationError):
+        Settings()
+    secret = "test-only-token-secret-at-least-32-bytes"
+    monkeypatch.setenv("QUEUEPILOT_TOKEN_SECRET", secret)
+    assert secret not in repr(Settings())

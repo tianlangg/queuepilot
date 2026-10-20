@@ -5,6 +5,7 @@ import asyncio
 from alembic import context
 from sqlalchemy.engine import Connection
 
+from queuepilot.auth import models  # noqa: F401 - registers metadata
 from queuepilot.core.config import Settings
 from queuepilot.db.base import Base
 from queuepilot.db.session import create_engine
