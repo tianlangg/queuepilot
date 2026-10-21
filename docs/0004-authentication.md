@@ -36,19 +36,21 @@ credential values. Tokens are valid only while their database session is active.
 | Create administrator through API | No | No | No |
 | Disable another user | No | No | Yes |
 | Disable self | No | No | No |
-| Read own ticket (milestone 3) | Yes | Yes | Yes |
-| Read another ticket (milestone 3) | No | Yes | Yes |
-| Create ticket (milestone 3) | Yes | Yes | Yes |
-| Add public comment to visible ticket (milestone 3) | Yes | Yes | Yes |
-| Add internal comment (milestone 3) | No | Yes | Yes |
+| Read own ticket | Yes | Yes | Yes |
+| Read another ticket | No | Yes | Yes |
+| Create ticket | Yes | Yes | Yes |
+| Add public comment to visible ticket | Yes | Yes | Yes |
+| Add internal comment | No | Yes | Yes |
+| Transition visible ticket | Reopen only | Assigned only | Yes |
 | Claim ticket (milestone 4) | No | Yes | Yes |
 | Reassign ticket (milestone 4) | No | No | Yes |
 
-The ticket entries define policy for later services; there are no ticket routes
-in milestone 2. Ticket services must check resource ownership/visibility in
-queries and transactions, not only this pure policy function. Unit tests cover
-every role/action cell. HTTP integration tests cover all implemented user-route
-denials and session behavior against PostgreSQL.
+The ticket read/comment entries are implemented in milestone 3. Ticket services
+check resource ownership/visibility in queries and transactions, not only this
+pure policy function. Transition rules are implemented directly in the ticket
+service; see [ticket rules](0006-tickets.md). Claim and reassignment remain
+milestone 4. Unit tests cover the pure role/action cells. HTTP integration tests
+cover implemented user and ticket denials against PostgreSQL.
 
 ## Operational limits
 

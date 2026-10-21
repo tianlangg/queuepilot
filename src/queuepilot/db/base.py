@@ -3,7 +3,7 @@
 from sqlalchemy import MetaData
 from sqlalchemy.orm import DeclarativeBase
 
-SCHEMA_REVISION = "0002_auth"
+SCHEMA_REVISION = "0003_tickets"
 
 
 class Base(DeclarativeBase):

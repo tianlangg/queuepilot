@@ -9,6 +9,7 @@ from queuepilot.auth import models  # noqa: F401 - registers metadata
 from queuepilot.core.config import Settings
 from queuepilot.db.base import Base
 from queuepilot.db.session import create_engine
+from queuepilot.tickets import models as ticket_models  # noqa: F401 - registers metadata
 
 
 def run_migrations(connection: Connection) -> None:
