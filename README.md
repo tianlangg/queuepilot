@@ -1,8 +1,8 @@
 # QueuePilot
 
 An API-first helpdesk under construction. Milestones 1 and 2 supply the service
-foundation, users, bearer authentication, rotating refresh sessions, and admin
-managed accounts. Tickets, workers, and WebSockets are later milestones. See
+foundation, users, bearer authentication, rotating refresh sessions, admin
+managed accounts, and ticket HTTP flows. Workers and WebSockets are later milestones. See
 [PLAN.md](PLAN.md).
 
 ## Prerequisites and one-command startup
@@ -164,6 +164,39 @@ return 409, denied actions 403, invalid credentials 401, and invalid input 422.
 Authentication responses carry `Cache-Control: no-store`. See the
 [permission matrix](docs/0004-authentication.md) for complete rules.
 
+## Tickets
+
+All `/api/v1/tickets` endpoints require a bearer token. A requester can create,
+list, and read their own tickets, and add public comments. Agents and admins can
+read the shared queue and add public or internal comments. Internal comments are
+absent from requester responses. Admins can change ticket status; agents can
+change status only when assigned (assignment endpoints arrive in milestone 4).
+Requesters can reopen their own resolved or closed tickets.
+
+```sh
+curl -X POST http://127.0.0.1:8000/api/v1/tickets \
+  -H 'Authorization: Bearer YOUR_ACCESS_TOKEN' \
+  -H 'Content-Type: application/json' \
+  -d '{"title":"Printer offline","description":"Floor 2 printer is offline"}'
+# GET /api/v1/tickets?limit=20&status=open
+# GET /api/v1/tickets/{id}
+# GET /api/v1/tickets/{id}/comments?limit=20
+# POST /api/v1/tickets/{id}/comments
+# {"body":"Investigating","internal":false,"expected_version":1}
+# POST /api/v1/tickets/{id}/transitions
+# {"status":"in_progress","expected_version":2}
+```
+
+Lists use stable `(created_at, id)` keyset ordering. Follow `next_cursor` using
+the same filters; limit is 1–100 (default 20). Detail and list use the same
+visibility rule. Comments use their own ascending cursor. A missing or hidden
+ticket returns 404, a prohibited action 403, stale version or invalid transition
+409, malformed input or cursor 422, and a body over 16 KiB 413. Each mutation
+increments `version`, writes audit and an outbox invalidation event in one
+transaction. Supply the current `expected_version` for comments and transitions;
+retry conflicts after refetching. No event dispatcher exists yet, so outbox
+events remain pending until milestone 5. See [ticket API and transition rules](docs/0006-tickets.md).
+
 ## Migrations
 
 ```sh
@@ -172,8 +205,8 @@ uv run --locked alembic current
 uv run --locked alembic check
 ```
 
-The reviewed revisions establish the foundation baseline and then `users` and
-`refresh_sessions`. Ticket tables will be added with their features. Migrations are a
+The reviewed revisions establish the foundation baseline, authentication tables,
+and the ticket, comment, audit, and outbox tables. Migrations are a
 separate operation, never an API startup side effect; Compose gates API startup on
 the migration job. Readiness requires the expected revision from
 `src/queuepilot/db/base.py`; update that constant when adding a revision.

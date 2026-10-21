@@ -43,6 +43,10 @@ def test_migrate_empty_database_and_repeat_upgrade(empty_database: Settings) -> 
             "alembic_version",
             "users",
             "refresh_sessions",
+            "tickets",
+            "ticket_comments",
+            "ticket_audit",
+            "outbox_events",
         }
 
 

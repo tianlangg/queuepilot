@@ -1,6 +1,6 @@
 # QueuePilot implementation plan
 
-Status: milestones 1 and 2 implemented and locally accepted. Milestone 1 included Docker and Linux CI-equivalent checks. Milestone 2 passed local quality, PostgreSQL integration, and Compose smoke checks. Hosted CI has not been triggered; later milestones remain planned.
+Status: milestones 1–3 implemented and locally accepted. Milestone 3 ticket HTTP evidence is in [ticket design and acceptance](docs/0006-tickets.md). Hosted CI has not been triggered; later milestones remain planned.
 
 ## Scope and assumptions
 
@@ -97,6 +97,8 @@ Acceptance: all protected routes reject unauthenticated callers; each permission
 
 ### 3. Ticket vertical slice (3–4 days)
 
+Implemented and locally accepted; see [ticket design and acceptance evidence](docs/0006-tickets.md). Hosted CI remains unverified.
+
 Deliver ticket creation, authorized detail/list endpoints, bounded pagination and filtering, public/internal comments, lifecycle transitions, ticket versions, indexes, audit history, and transactional outbox insertion. Establish request-size limits and consistent error responses.
 
 Tests: creation/read/update flow, ownership checks, internal-comment isolation, transition matrix, validation boundaries, stable pagination, rollback, and atomic audit/outbox persistence.
@@ -146,4 +148,4 @@ Acceptance: all previous gates pass in CI and documented smoke tests pass on a s
 
 ## Decisions to confirm before expanding scope
 
-Initial assumptions above allow implementation to begin once requested. Confirm deployment target and capacity expectations before release hardening; confirm SLA/business-hour calendars before expanding escalation policies. Multi-tenancy, attachment storage, email delivery, and a user interface require separate scope and authorization. Milestones 1 and 2 have been authorized. Later milestones, deployment, commits, and pushes require separate authorization.
+Initial assumptions above allow implementation to begin once requested. Confirm deployment target and capacity expectations before release hardening; confirm SLA/business-hour calendars before expanding escalation policies. Multi-tenancy, attachment storage, email delivery, and a user interface require separate scope and authorization. Milestones 1–3 have been authorized. Later milestones, deployment, commits, and pushes require separate authorization.

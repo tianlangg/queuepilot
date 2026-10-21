@@ -1,12 +1,12 @@
 """ASGI application factory and process lifecycle."""
 
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import AsyncExitStack, asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
@@ -15,6 +15,7 @@ from queuepilot.auth.routes import router as auth_router
 from queuepilot.core.config import Settings
 from queuepilot.core.resources import Resources, create_redis
 from queuepilot.db.session import create_engine
+from queuepilot.tickets.routes import router as tickets_router
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +53,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app = FastAPI(title=config.app_name, lifespan=lifespan)
     app.state.settings = config
 
+    @app.middleware("http")
+    async def request_limit(
+        request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
+        # Bound JSON input before parsing, including chunked requests.
+        if request.method in {"POST", "PATCH", "PUT"}:
+            length = request.headers.get("content-length")
+            if length is not None and length.isdecimal() and int(length) > 16_384:
+                return JSONResponse(
+                    status_code=413, content={"detail": "Request too large"}
+                )
+            if len(await request.body()) > 16_384:
+                return JSONResponse(
+                    status_code=413, content={"detail": "Request too large"}
+                )
+        return await call_next(request)
+
     @app.exception_handler(RequestValidationError)
     async def invalid_request(
         _request: Request, _exc: RequestValidationError
@@ -60,6 +78,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.include_router(health_router)
     app.include_router(auth_router)
+    app.include_router(tickets_router)
 
     @app.get("/", response_model=RootResponse)
     async def root() -> RootResponse:
