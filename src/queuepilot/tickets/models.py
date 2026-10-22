@@ -47,6 +47,8 @@ class Ticket(Base):
         DateTime(timezone=True), server_default=func.now()
     )
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    opened_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    escalated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
@@ -71,9 +73,46 @@ class Comment(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
+class Assignment(Base):
+    __tablename__ = "ticket_assignments"
+    __table_args__ = (
+        Index(
+            "ix_ticket_assignments_ticket_version",
+            "ticket_id",
+            "ticket_version",
+            unique=True,
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    ticket_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tickets.id"), nullable=False
+    )
+    previous_assignee_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id")
+    )
+    assignee_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=False
+    )
+    actor_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=False
+    )
+    ticket_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+
+
 class Audit(Base):
     __tablename__ = "ticket_audit"
     __table_args__ = (
+        CheckConstraint(
+            "(actor_kind = 'user' AND actor_id IS NOT NULL) OR "
+            "(actor_kind = 'automation' AND actor_id IS NULL)",
+            name="actor",
+        ),
         Index(
             "ix_ticket_audit_ticket_version", "ticket_id", "ticket_version", unique=True
         ),
@@ -85,9 +124,10 @@ class Audit(Base):
     ticket_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("tickets.id"), nullable=False
     )
-    actor_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id"), nullable=False
+    actor_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id")
     )
+    actor_kind: Mapped[str] = mapped_column(String(16), default="user")
     ticket_version: Mapped[int] = mapped_column(Integer)
     action: Mapped[str] = mapped_column(String(32))
     details: Mapped[dict[str, str]] = mapped_column(JSONB)
@@ -96,7 +136,14 @@ class Audit(Base):
 
 class OutboxEvent(Base):
     __tablename__ = "outbox_events"
-    __table_args__ = (Index("ix_outbox_events_pending", "created_at", "id"),)
+    __table_args__ = (
+        Index(
+            "ix_outbox_events_due",
+            "available_at",
+            "id",
+            postgresql_where="published_at IS NULL",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
@@ -109,3 +156,9 @@ class OutboxEvent(Base):
     payload: Mapped[dict[str, str]] = mapped_column(JSONB)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    available_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    lease_token: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    attempts: Mapped[int] = mapped_column(Integer, server_default="0")

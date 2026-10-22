@@ -42,15 +42,19 @@ credential values. Tokens are valid only while their database session is active.
 | Add public comment to visible ticket | Yes | Yes | Yes |
 | Add internal comment | No | Yes | Yes |
 | Transition visible ticket | Reopen only | Assigned only | Yes |
-| Claim ticket (milestone 4) | No | Yes | Yes |
-| Reassign ticket (milestone 4) | No | No | Yes |
+| Claim ticket | No | Yes | Yes |
+| Reassign ticket | No | No | Yes |
+| Read/change scheduling policy | No | No | Yes |
+| Inspect/retry failed jobs | No | No | Yes |
+| Read operational metrics | No | No | Yes |
 
-The ticket read/comment entries are implemented in milestone 3. Ticket services
+Ticket services
 check resource ownership/visibility in queries and transactions, not only this
 pure policy function. Transition rules are implemented directly in the ticket
-service; see [ticket rules](0006-tickets.md). Claim and reassignment remain
-milestone 4. Unit tests cover the pure role/action cells. HTTP integration tests
-cover implemented user and ticket denials against PostgreSQL.
+service; see [ticket rules](0006-tickets.md). Scheduling and operations routes
+check the administrator role before any data access. Unit tests cover the pure
+role/action cells, and HTTP integration tests cover user, ticket, scheduling,
+and operations denials against PostgreSQL.
 
 ## Operational limits
 

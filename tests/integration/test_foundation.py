@@ -45,8 +45,13 @@ def test_migrate_empty_database_and_repeat_upgrade(empty_database: Settings) -> 
             "refresh_sessions",
             "tickets",
             "ticket_comments",
+            "ticket_assignments",
             "ticket_audit",
             "outbox_events",
+            "connection_credentials",
+            "scheduling_policy",
+            "scheduling_policy_audit",
+            "scheduled_jobs",
         }
 
 

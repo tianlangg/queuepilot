@@ -61,7 +61,9 @@ def test_resources_closed_on_shutdown() -> None:
     with (
         patch("queuepilot.main.create_engine", return_value=engine),
         patch("queuepilot.main.create_redis", return_value=redis),
+        patch("queuepilot.main.Hub") as hub_class,
     ):
+        hub_class.return_value.close = AsyncMock()
         with TestClient(app):
             engine.dispose.assert_not_awaited()
             redis.aclose.assert_not_awaited()
