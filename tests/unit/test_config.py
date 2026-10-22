@@ -14,6 +14,10 @@ def test_required_environment() -> None:
 def test_environment_variables(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("QUEUEPILOT_ENVIRONMENT", "production")
     monkeypatch.setenv("QUEUEPILOT_APP_NAME", " Custom API ")
+    monkeypatch.setenv("QUEUEPILOT_WEBSOCKET_ORIGINS", "https://help.example.com")
+    monkeypatch.setenv(
+        "QUEUEPILOT_TOKEN_SECRET", "unique-production-example-secret-123456789"
+    )
     settings = Settings()
     assert settings.environment == "production"
     assert settings.app_name == "Custom API"
@@ -41,9 +45,24 @@ def test_optional_dotenv_and_environment_precedence(
     )
     assert Settings().environment == "development"
     monkeypatch.setenv("QUEUEPILOT_ENVIRONMENT", "production")
+    monkeypatch.setenv("QUEUEPILOT_WEBSOCKET_ORIGINS", "https://help.example.com")
+    monkeypatch.setenv(
+        "QUEUEPILOT_TOKEN_SECRET", "unique-production-example-secret-123456789"
+    )
     settings = Settings()
     assert settings.environment == "production"
     assert settings.app_name == "Local API"
+
+
+def test_production_rejects_local_origins_and_example_secret(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("QUEUEPILOT_ENVIRONMENT", "production")
+    with pytest.raises(ValidationError, match="non-local HTTPS browser origins"):
+        Settings()
+    monkeypatch.setenv("QUEUEPILOT_WEBSOCKET_ORIGINS", "https://help.example.com")
+    with pytest.raises(ValidationError, match="unique token secret"):
+        Settings()
 
 
 def test_unknown_dotenv_key_fails(tmp_path: Path) -> None:

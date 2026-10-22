@@ -3,7 +3,13 @@
 from typing import Annotated, Literal
 from urllib.parse import urlsplit
 
-from pydantic import Field, SecretStr, StringConstraints, field_validator
+from pydantic import (
+    Field,
+    SecretStr,
+    StringConstraints,
+    field_validator,
+    model_validator,
+)
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import ArgumentError
@@ -33,6 +39,46 @@ class Settings(BaseSettings):
     access_token_minutes: Annotated[int, Field(ge=1, le=60)] = 15
     refresh_token_days: Annotated[int, Field(ge=1, le=90)] = 30
     probe_timeout_seconds: Annotated[float, Field(gt=0, le=10, allow_inf_nan=False)] = 2
+    websocket_origins: str = "http://127.0.0.1:8000,http://localhost:8000"
+    auth_requests_per_minute: Annotated[int, Field(ge=1, le=10000)] = 30
+    read_requests_per_minute: Annotated[int, Field(ge=1, le=10000)] = 300
+    write_requests_per_minute: Annotated[int, Field(ge=1, le=10000)] = 120
+    websocket_connection_limit: Annotated[int, Field(ge=1, le=10000)] = 500
+
+    @model_validator(mode="after")
+    def validate_production(self) -> "Settings":
+        if self.environment == "production":
+            origins = self.websocket_origins.split(",")
+            if any(
+                urlsplit(origin).scheme != "https"
+                or urlsplit(origin).hostname in {"localhost", "127.0.0.1"}
+                for origin in origins
+            ):
+                raise ValueError(
+                    "Production requires explicit non-local HTTPS browser origins"
+                )
+            if self.token_secret.get_secret_value().startswith(
+                ("REPLACE_", "ci-test-", "test-only-")
+            ):
+                raise ValueError("Production requires a unique token secret")
+        return self
+
+    @field_validator("websocket_origins")
+    @classmethod
+    def validate_websocket_origins(cls, value: str) -> str:
+        origins = [part.strip() for part in value.split(",")]
+        if not origins or any(
+            not origin
+            or origin == "*"
+            or urlsplit(origin).scheme not in {"http", "https"}
+            or not urlsplit(origin).hostname
+            or urlsplit(origin).path not in {"", "/"}
+            or urlsplit(origin).query
+            or urlsplit(origin).fragment
+            for origin in origins
+        ):
+            raise ValueError("Configure explicit HTTP(S) WebSocket origins")
+        return ",".join(origins)
 
     @field_validator("database_url")
     @classmethod

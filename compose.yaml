@@ -1,6 +1,10 @@
 name: queuepilot
 x-app: &app
   build: .
+  read_only: true
+  tmpfs: ["/tmp"]
+  cap_drop: ["ALL"]
+  security_opt: ["no-new-privileges:true"]
   environment: &app-environment
     QUEUEPILOT_ENVIRONMENT: development
     QUEUEPILOT_DATABASE_URL: postgresql+psycopg://queuepilot:${POSTGRES_PASSWORD:?Run python3 scripts/init_env.py first}@postgres:5432/queuepilot
@@ -39,12 +43,16 @@ services:
     ports: ["127.0.0.1:8000:8000"]
     depends_on:
       migrate: {condition: service_completed_successfully}
-      redis: {condition: service_healthy}
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=5)"]
       interval: 5s
       timeout: 6s
       retries: 12
+  worker:
+    <<: *app
+    command: ["python", "-m", "queuepilot.outbox.dispatcher"]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
   postgres-test:
     profiles: ["test"]
     image: postgres:17.11-bookworm

@@ -26,6 +26,8 @@ class TicketResponse(BaseModel):
     version: int
     created_at: datetime
     updated_at: datetime
+    opened_at: datetime
+    escalated_at: datetime | None
     resolved_at: datetime | None
     closed_at: datetime | None
 
@@ -60,4 +62,15 @@ class CommentPage(BaseModel):
 class TransitionRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     status: Status
+    expected_version: int = Field(ge=1)
+
+
+class ClaimRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    expected_version: int = Field(ge=1)
+
+
+class ReassignRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    assignee_id: uuid.UUID
     expected_version: int = Field(ge=1)

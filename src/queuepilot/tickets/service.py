@@ -7,11 +7,15 @@ from datetime import UTC, datetime
 from typing import cast
 
 from sqlalchemy import and_, or_, select, true
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ColumnElement
 
+from queuepilot.auth.models import User
+from queuepilot.auth.permissions import allowed
 from queuepilot.auth.service import Principal
-from queuepilot.tickets.models import Audit, Comment, OutboxEvent, Ticket
+from queuepilot.jobs.service import schedule
+from queuepilot.tickets.models import Assignment, Audit, Comment, OutboxEvent, Ticket
 from queuepilot.tickets.schemas import (
     CommentCreate,
     CommentPage,
@@ -33,6 +37,20 @@ class Forbidden(Exception):
 
 class Conflict(Exception):
     pass
+
+
+class Busy(Exception):
+    """A bounded PostgreSQL lock, statement, or serialization failure."""
+
+
+class InvalidAssignee(Exception):
+    pass
+
+
+def _assignment_error(exc: DBAPIError) -> None:
+    if getattr(exc.orig, "sqlstate", None) in {"55P03", "57014", "40P01", "40001"}:
+        raise Busy from exc
+    raise exc
 
 
 def visible(principal: Principal) -> ColumnElement[bool]:
@@ -107,7 +125,7 @@ async def get_ticket(
 def record(
     session: AsyncSession,
     ticket: Ticket,
-    actor: Principal,
+    actor: Principal | None,
     action: str,
     details: dict[str, str],
     now: datetime,
@@ -115,7 +133,8 @@ def record(
     session.add(
         Audit(
             ticket_id=ticket.id,
-            actor_id=actor.id,
+            actor_id=actor.id if actor else None,
+            actor_kind="user" if actor else "automation",
             ticket_version=ticket.version,
             action=action,
             details=details,
@@ -128,7 +147,9 @@ def record(
             ticket_id=ticket.id,
             ticket_version=ticket.version,
             event_type=action,
-            payload={},
+            payload={"visibility": details["visibility"]}
+            if action == "commented"
+            else {},
             created_at=now,
         )
     )
@@ -149,11 +170,13 @@ async def create_ticket(
             status="open",
             version=1,
             updated_at=timestamp,
+            opened_at=timestamp,
         )
         session.add(ticket)
         await session.flush()
         await session.refresh(ticket)
         record(session, ticket, principal, "created", {}, timestamp)
+        await schedule(session, ticket, timestamp)
         result = TicketResponse.model_validate(ticket)
     return result
 
@@ -285,6 +308,9 @@ async def transition(
             else ticket.resolved_at
         )
         ticket.closed_at = timestamp if status == "closed" else None
+        if status == "open":
+            ticket.opened_at = timestamp
+            ticket.escalated_at = None
         record(
             session,
             ticket,
@@ -293,6 +319,125 @@ async def transition(
             {"from": previous, "to": status},
             timestamp,
         )
+        await schedule(session, ticket, timestamp)
         await session.flush()
         result = TicketResponse.model_validate(ticket)
     return result
+
+
+async def claim(
+    session: AsyncSession,
+    principal: Principal,
+    ticket_id: uuid.UUID,
+    expected_version: int,
+    now: datetime | None = None,
+) -> TicketResponse:
+    timestamp = now or datetime.now(UTC)
+    try:
+        async with session.begin():
+            ticket = await session.scalar(
+                select(Ticket)
+                .where(Ticket.id == ticket_id, visible(principal))
+                .with_for_update()
+            )
+            if ticket is None:
+                raise NotFound
+            if not allowed(principal.role, "ticket_claim"):
+                raise Forbidden
+            # A successful claim can be repeated even with the original version.
+            if ticket.assignee_id == principal.id and ticket.status == "in_progress":
+                return TicketResponse.model_validate(ticket)
+            if (
+                ticket.version != expected_version
+                or ticket.status != "open"
+                or ticket.assignee_id is not None
+            ):
+                raise Conflict
+            assignee = await session.get(User, principal.id, with_for_update=True)
+            if (
+                assignee is None
+                or assignee.disabled
+                or assignee.role not in {"agent", "admin"}
+            ):
+                raise Forbidden
+            _assign(session, ticket, principal, principal.id, "claimed", timestamp)
+            await schedule(session, ticket, timestamp)
+            await session.flush()
+            result = TicketResponse.model_validate(ticket)
+        return result
+    except DBAPIError as exc:
+        _assignment_error(exc)
+        raise AssertionError("unreachable") from exc
+
+
+async def reassign(
+    session: AsyncSession,
+    principal: Principal,
+    ticket_id: uuid.UUID,
+    assignee_id: uuid.UUID,
+    expected_version: int,
+    now: datetime | None = None,
+) -> TicketResponse:
+    timestamp = now or datetime.now(UTC)
+    try:
+        async with session.begin():
+            ticket = await session.scalar(
+                select(Ticket)
+                .where(Ticket.id == ticket_id, visible(principal))
+                .with_for_update()
+            )
+            if ticket is None:
+                raise NotFound
+            if not allowed(principal.role, "ticket_reassign"):
+                raise Forbidden
+            if ticket.version != expected_version or ticket.status not in {
+                "open",
+                "in_progress",
+            }:
+                raise Conflict
+            assignee = await session.get(User, assignee_id, with_for_update=True)
+            if assignee is None or assignee.disabled or assignee.role != "agent":
+                raise InvalidAssignee
+            if ticket.assignee_id == assignee_id:
+                return TicketResponse.model_validate(ticket)
+            _assign(session, ticket, principal, assignee_id, "reassigned", timestamp)
+            await schedule(session, ticket, timestamp)
+            await session.flush()
+            result = TicketResponse.model_validate(ticket)
+        return result
+    except DBAPIError as exc:
+        _assignment_error(exc)
+        raise AssertionError("unreachable") from exc
+
+
+def _assign(
+    session: AsyncSession,
+    ticket: Ticket,
+    actor: Principal,
+    assignee_id: uuid.UUID,
+    action: str,
+    timestamp: datetime,
+) -> None:
+    previous = ticket.assignee_id
+    ticket.assignee_id = assignee_id
+    ticket.status = "in_progress"
+    ticket.version += 1
+    ticket.updated_at = timestamp
+    session.add(
+        Assignment(
+            ticket_id=ticket.id,
+            previous_assignee_id=previous,
+            assignee_id=assignee_id,
+            actor_id=actor.id,
+            ticket_version=ticket.version,
+            created_at=timestamp,
+        )
+    )
+    record(
+        session,
+        ticket,
+        actor,
+        action,
+        {"from": str(previous) if previous else "", "to": str(assignee_id)},
+        timestamp,
+    )

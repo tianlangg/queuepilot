@@ -1,6 +1,6 @@
 # QueuePilot implementation plan
 
-Status: milestones 1–3 implemented and locally accepted. Milestone 3 ticket HTTP evidence is in [ticket design and acceptance](docs/0006-tickets.md). Hosted CI has not been triggered; later milestones remain planned.
+Status: milestones 1–6 implemented and locally accepted. Milestone 7 is implemented locally, with verification in progress; see [release and operational handoff](docs/0010-release.md). Hosted CI and staging acceptance remain unverified.
 
 ## Scope and assumptions
 
@@ -107,6 +107,8 @@ Acceptance: requester and agent flows work through HTTP against PostgreSQL; fail
 
 ### 4. Atomic assignment (2–3 days)
 
+Implemented; see [assignment design and acceptance](docs/0007-assignment.md).
+
 Deliver locked claim and administrator reassignment endpoints, assignment history, deterministic conflict responses, bounded lock/statement timeouts, and a documented transaction retry policy. Keep transactions short and never call Redis while holding ticket locks.
 
 Tests: synchronize two independent sessions/processes claiming one ticket; assert one winner and one HTTP 409, one assignment effect, and matching audit/outbox records. Repeat races, test different-ticket concurrency, rollback/lock release, reassignment versus claim, and timeout handling.
@@ -114,6 +116,8 @@ Tests: synchronize two independent sessions/processes claiming one ticket; asser
 Acceptance: repeated real PostgreSQL races never overwrite a competing claim or create duplicate effects. A second claim by the current assignee has a documented idempotent response. Deadlocks/timeouts are bounded and produce controlled responses.
 
 ### 5. Real-time updates and reliable event publication (4–6 days)
+
+Implemented; see [realtime design and acceptance](docs/0008-realtime.md).
 
 Deliver outbox dispatcher, Redis fan-out, authenticated subscriptions, connection-credential issuance, heartbeats, payload validation, bounded per-connection queues, slow-client disconnect/resync behavior, and connection cleanup. Define reauthorization on role/session changes and credential expiry. Start with minimal invalidation events so REST applies current visibility rules.
 
@@ -123,6 +127,8 @@ Acceptance: two API replicas receive updates through Redis; unauthorized clients
 
 ### 6. Automated scheduling (3–5 days)
 
+Implemented; see [scheduling design and acceptance](docs/0009-scheduling.md).
+
 Deliver durable due jobs, concurrent claims and leases, retries/backoff, failed-job inspection, escalation and auto-close policies, cancellation/rescheduling on state changes, and graceful worker shutdown. Record policy changes and automation actors in audit history.
 
 Tests: injected-clock deadline boundaries, UTC handling, two workers claiming one due action, crash/lease recovery, retry exhaustion, stale jobs after reopening/reassignment, concurrent human edits, and duplicate execution attempts.
@@ -130,6 +136,9 @@ Tests: injected-clock deadline boundaries, UTC handling, two workers claiming on
 Acceptance: automated actions run within 60 seconds of their due time under documented normal load. Worker restarts do not lose jobs; repeated attempts produce one business effect. Stale jobs cannot overwrite newer user actions, and operators can inspect and safely retry failed work.
 
 ### 7. Release hardening and operational handoff (6–9 days)
+
+Implemented locally; acceptance evidence and remaining external gates are in
+[release and operational handoff](docs/0010-release.md).
 
 Deliver full-stack smoke scenarios, load/concurrency harness, CI integration services, secure runtime configuration, rate/connection limits, graceful shutdown, outbox/job lag metrics, deployment and rollback instructions, database backup/restore rehearsal, and migration compatibility guidance.
 
@@ -148,4 +157,4 @@ Acceptance: all previous gates pass in CI and documented smoke tests pass on a s
 
 ## Decisions to confirm before expanding scope
 
-Initial assumptions above allow implementation to begin once requested. Confirm deployment target and capacity expectations before release hardening; confirm SLA/business-hour calendars before expanding escalation policies. Multi-tenancy, attachment storage, email delivery, and a user interface require separate scope and authorization. Milestones 1–3 have been authorized. Later milestones, deployment, commits, and pushes require separate authorization.
+Confirm a deployment target before staging verification and confirm SLA/business-hour calendars before expanding escalation policies. Multi-tenancy, attachment storage, email delivery, and a user interface require separate scope and authorization. Deployment, commits, and pushes require separate authorization.

@@ -38,9 +38,14 @@ def test_lifespan_startup_and_shutdown(caplog: pytest.LogCaptureFixture) -> None
     app = create_app(Settings(environment="test"))
     assert not caplog.records
     with TestClient(app) as client:
-        assert caplog.messages == ["Starting QueuePilot"]
+        assert [r.message for r in caplog.records if r.name == "queuepilot.main"] == [
+            "Starting QueuePilot"
+        ]
         assert client.get("/").status_code == 200
-    assert caplog.messages == ["Starting QueuePilot", "Stopped QueuePilot"]
+    assert [r.message for r in caplog.records if r.name == "queuepilot.main"] == [
+        "Starting QueuePilot",
+        "Stopped QueuePilot",
+    ]
 
 
 def test_lifespan_cleanup_on_exception(caplog: pytest.LogCaptureFixture) -> None:
@@ -49,4 +54,7 @@ def test_lifespan_cleanup_on_exception(caplog: pytest.LogCaptureFixture) -> None
     with pytest.raises(RuntimeError, match="interrupted"):
         with TestClient(app):
             raise RuntimeError("interrupted")
-    assert caplog.messages == ["Starting QueuePilot", "Stopped QueuePilot"]
+    assert [r.message for r in caplog.records if r.name == "queuepilot.main"] == [
+        "Starting QueuePilot",
+        "Stopped QueuePilot",
+    ]
